@@ -11,6 +11,7 @@ from unredact_tools import __version__
 from unredact_tools.model import FACT_LABELS, SEVERITIES
 
 ONION = "unred42id7l3elhrlj2oveau3vg2osq2w3qzguj4ajxrg3vycohoueyd.onion"
+PGP_FPR = "2293 9282 4C12 7761 6FC4 B0C7 50CA 10C4 EB05 B201"
 
 CSS = """
 :root{--fg:#d7d3cb;--dim:#8a857c;--line:#33312d;--bg:#141412;--hot:#ff8a1f}
@@ -73,6 +74,7 @@ def page(title: str, body: str) -> str:
         f'<br class="tb"><nav>{NAV}</nav></header><main>{body}</main>'
         f"<footer><p>unredact.tools · onion edition · v{e(__version__)}</p>"
         f"<p>{e(ONION)}</p>"
+        f"<p>pgp <a href=\"/pgp.txt\">{PGP_FPR}</a></p>"
         "<p>no javascript · no cookies · no analytics</p></footer>"
         "</body></html>"
     )

@@ -26,7 +26,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from starlette.background import BackgroundTask
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
 from unredact_tools.image import VisualOpts
 from unredact_tools.scanner import sanitize, scan
@@ -37,6 +37,7 @@ import render
 
 SESSION_TTL = 300  # seconds an upload is kept so it can be cleaned
 ROOT = Path(tempfile.gettempdir()) / "unredact-onion"
+PGP_KEY = Path(__file__).resolve().parent / "pgp.asc"
 
 app = FastAPI(title="unredact.tools onion", docs_url=None, redoc_url=None,
               openapi_url=None)
@@ -114,6 +115,14 @@ def home():
 @app.get("/about", response_class=HTMLResponse)
 def about():
     return render.about()
+
+
+@app.get("/pgp.txt", response_class=PlainTextResponse)
+def pgp_key():
+    """Site contact / release-signing key, linked from every page footer."""
+    if not PGP_KEY.is_file():
+        raise HTTPException(404, "no pgp key published")
+    return PGP_KEY.read_text(encoding="utf-8")
 
 
 @app.post("/scan", response_class=HTMLResponse)

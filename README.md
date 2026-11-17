@@ -30,6 +30,18 @@ directory to `/var/lib/tor/` (owner `tor:tor`, mode `0700`), add a
 `HiddenServiceDir` block pointing at `127.0.0.1:8011` like the one in
 *Deploy*, then `sudo systemctl reload tor`.
 
+## PGP
+
+Site contact + release-signing key ("unredact.tools"), served at `/pgp.txt`
+and linked from the footer of every page:
+
+```
+2293 9282 4C12 7761 6FC4 B0C7 50CA 10C4 EB05 B201
+```
+
+The armored key is `pgp.asc` in this repo; rotate by replacing the file and
+restarting the service.
+
 ## Pages
 
 | route | what it does |
