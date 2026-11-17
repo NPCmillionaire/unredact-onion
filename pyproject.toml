@@ -1,0 +1,14 @@
+[project]
+name = "unredact-onion"
+version = "0.1.0"
+description = "No-JavaScript, text-first onion front end for unredact.tools"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "python-multipart>=0.0.9",
+  "unredact-tools[web,vision]>=0.2.0",
+]
+
+[tool.uv.sources]
+unredact-tools = { path = "../unredact.tools", editable = true }

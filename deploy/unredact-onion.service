@@ -1,0 +1,14 @@
+[Unit]
+Description=unredact.tools onion edition (no-JS, text-first)
+After=network.target
+
+[Service]
+User=cam
+WorkingDirectory=/home/cam/apps/unredact-onion
+ExecStart=/home/cam/apps/unredact-onion/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8011 --no-access-log
+Restart=on-failure
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
