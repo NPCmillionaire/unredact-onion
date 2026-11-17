@@ -16,6 +16,7 @@ deletes the session as soon as the file has been sent.
 """
 from __future__ import annotations
 
+import json
 import mimetypes
 import secrets
 import shutil
@@ -24,6 +25,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from starlette.background import BackgroundTask
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
@@ -56,19 +58,23 @@ async def headers(request: Request, call_next):
     return resp
 
 
+def _mtime(p: Path) -> float:
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def _sweep() -> None:
     """Drop sessions past their TTL; keep the directory from growing."""
     try:
-        entries = sorted(ROOT.iterdir(), key=lambda p: p.stat().st_mtime)
+        entries = sorted(ROOT.iterdir(), key=_mtime)
     except FileNotFoundError:
         return
     now = time.time()
     for i, p in enumerate(entries):
-        try:
-            if now - p.stat().st_mtime > SESSION_TTL or len(entries) - i > 64:
-                shutil.rmtree(p, ignore_errors=True)
-        except OSError:
-            pass
+        if now - _mtime(p) > SESSION_TTL or len(entries) - i > 64:
+            shutil.rmtree(p, ignore_errors=True)
 
 
 def _session(name: str) -> tuple[str, Path]:
@@ -77,6 +83,7 @@ def _session(name: str) -> tuple[str, Path]:
     token = secrets.token_urlsafe(24)
     d = ROOT / token
     d.mkdir(mode=0o700)
+    (d / "session.json").write_text(json.dumps({"src": name}), encoding="utf-8")
     return token, d / name
 
 
@@ -87,6 +94,21 @@ def _dir(token: str) -> Path:
     if not d.is_dir():
         raise HTTPException(404, "that upload expired — scan the file again")
     return d
+
+
+def _meta(d: Path) -> dict:
+    try:
+        value = json.loads((d / "session.json").read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _member(d: Path, name: object) -> Path | None:
+    """Resolve a bare filename inside the session dir; reject anything else."""
+    if not isinstance(name, str) or not name or "/" in name or name.startswith("."):
+        return None
+    return d / name
 
 
 async def _save(upload: UploadFile, dest: Path) -> int:
@@ -155,8 +177,8 @@ async def do_clean(
     if pdf_mode not in ("raster", "text"):
         raise HTTPException(400, "pdf_mode must be raster or text")
     d = _dir(token)
-    src = next((p for p in d.iterdir() if p.is_file() and ".clean" not in p.name), None)
-    if src is None:
+    src = _member(d, _meta(d).get("src"))
+    if src is None or not src.is_file():
         raise HTTPException(404, "that upload expired — scan the file again")
 
     opts = VisualOpts(blur_faces=blur_faces, redact_codes=redact_codes,
@@ -175,6 +197,10 @@ async def do_clean(
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(422, str(exc))
 
+    meta = _meta(d)
+    meta["clean"] = Path(out).name
+    (d / "session.json").write_text(json.dumps(meta), encoding="utf-8")
+
     remaining = [f for f in after.sorted_findings()
                  if f.severity != "info" and f.category != "structure"]
     before_n = sum(1 for f in before.findings if f.severity != "info")
@@ -185,8 +211,8 @@ async def do_clean(
 @app.get("/download/{token}")
 def download(token: str):
     d = _dir(token)
-    out = next((p for p in d.iterdir() if p.is_file() and ".clean" in p.name), None)
-    if out is None:
+    out = _member(d, _meta(d).get("clean"))
+    if out is None or not out.is_file():
         raise HTTPException(404, "nothing to download — scan and clean a file first")
     media = mimetypes.guess_type(out.name)[0] or "application/octet-stream"
     return FileResponse(out, filename=out.name, media_type=media,
@@ -197,6 +223,12 @@ def download(token: str):
 async def http_error(request: Request, exc: HTTPException):
     return HTMLResponse(render.error(exc.status_code, str(exc.detail)),
                         status_code=exc.status_code)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    return HTMLResponse(render.error(400, "that form was incomplete — go back and upload a file"),
+                        status_code=400)
 
 
 @app.exception_handler(Exception)

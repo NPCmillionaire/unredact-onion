@@ -51,6 +51,7 @@ restarting the service.
 | `POST /clean` | sanitize + re-scan, returns a one-shot download link |
 | `GET /download/<token>` | serves the cleaned file once, then deletes the session |
 | `GET /about` | what it checks, privacy, limits |
+| `GET /pgp.txt` | armored site contact / release-signing key |
 
 ## Run
 
@@ -61,6 +62,16 @@ uv venv && uv sync          # or: python -m venv .venv && pip install -e ".[web,
 ```
 
 Open <http://127.0.0.1:8011/>.
+
+## Tests
+
+```bash
+uv run pytest -q
+```
+
+Seven in-process tests cover the home/PGP pages, HTML error responses for
+incomplete forms, the full scan → clean → one-shot download chain, hostile
+session tokens, uploads whose names contain `.clean`, and TTL sweeping.
 
 ## Deploy on the hidden service
 
@@ -84,6 +95,8 @@ sudo systemctl restart tor.service
 
 Scans need the upload twice — once to report, once to clean — so the file is
 parked in a `0700` directory under the service's private `/tmp` for at most
-`SESSION_TTL` (300 s). It is deleted when the cleaned copy is downloaded, when
-the session expires, or when the service restarts. Scan-only uploads are never
-written anywhere else, and nothing is logged.
+`SESSION_TTL` (300 s). A tiny `session.json` records the source and cleaned
+filenames so neither lookup depends on guessing from file names. The directory
+is deleted when the cleaned copy is downloaded, when the session expires, or
+when the service restarts. Scan-only uploads are never written anywhere else,
+and nothing is logged.

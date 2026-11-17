@@ -68,6 +68,7 @@ def page(title: str, body: str) -> str:
         "<!DOCTYPE html><html lang=en><head><meta charset=utf-8>"
         '<meta name=viewport content="width=device-width,initial-scale=1">'
         "<title>" + e(title) + " · unredact.tools</title>"
+        '<link rel="icon" href="data:,">'
         f"<style>{CSS}</style></head><body>"
         '<header><a class="brand" href="/"><span class="br">[</span>unredact'
         '<span class="br">]</span><span class="meta"> onion</span></a>'
