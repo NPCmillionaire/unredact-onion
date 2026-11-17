@@ -36,6 +36,9 @@ legend{color:var(--dim);font-size:13px;padding:0 0 6px}
 label{display:block;font-size:14px;margin:6px 0}
 input[type=checkbox]{margin-right:6px}
 input[type=file]{width:100%;padding:8px 0;color:var(--fg)}
+input[type=file]::file-selector-button{font:inherit;background:transparent;color:var(--fg);border:1px solid var(--line);padding:8px 14px;margin-right:12px;cursor:pointer}
+input[type=file]::file-selector-button:hover{border-color:var(--fg);color:var(--hot)}
+:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
 select{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:4px 6px}
 button,.btn{font:inherit;display:inline-block;background:var(--fg);color:var(--bg);border:0;padding:9px 18px;cursor:pointer;text-decoration:none}
 button:hover,.btn:hover{background:var(--hot);color:#141412}
