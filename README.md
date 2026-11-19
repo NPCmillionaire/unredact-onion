@@ -100,3 +100,14 @@ filenames so neither lookup depends on guessing from file names. The directory
 is deleted when the cleaned copy is downloaded, when the session expires, or
 when the service restarts. Scan-only uploads are never written anywhere else,
 and nothing is logged.
+
+## Relay to the clearnet app
+
+`relay.py` sends two things to https://unredact.tools, and never a file: a +1 to
+the shared "files checked / scrubbed" totals after each scan or clean, and
+contact-form messages, which the clearnet app emails on. Both need the same
+`UNREDACT_RELAY_TOKEN` the clearnet app has. On arch it comes from
+`~/.config/unredact/relay.env` via the systemd drop-in
+`/etc/systemd/system/unredact-onion.service.d/relay.conf`, which also sets
+`UNREDACT_MAX_MB=200`. Without the token, the totals stay hidden and the contact
+form points to email.

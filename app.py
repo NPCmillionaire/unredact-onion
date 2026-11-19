@@ -9,6 +9,11 @@ Flow:  GET /        form
        POST /scan   report (file parked in a private session dir)
        POST /clean  sanitize + re-scan, then a link
        GET /download/<token>  serve once, delete
+       GET /contact, POST /contact   message relayed to the clearnet app
+       GET /donate
+
+The shared totals and contact messages go to the clearnet app (see relay.py);
+files never leave this machine.
 
 Privacy: sessions live under a 0700 dir in the service's private /tmp, expire
 after SESSION_TTL seconds, and are swept on every request. The download route
@@ -35,6 +40,7 @@ from unredact_tools.scanner import sanitize, scan
 # shared limits and helpers so the two front ends behave the same
 from unredact_tools.web.app import HINTS, MAX_MB, WORKERS, _safe_name
 
+import relay
 import render
 
 SESSION_TTL = 300  # seconds an upload is kept so it can be cleaned
@@ -131,12 +137,34 @@ async def _save(upload: UploadFile, dest: Path) -> int:
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    return render.home()
+    return render.home(MAX_MB, relay.totals())
 
 
 @app.get("/about", response_class=HTMLResponse)
 def about():
     return render.about()
+
+
+@app.get("/contact", response_class=HTMLResponse)
+def contact_page():
+    return render.contact()
+
+
+@app.post("/contact", response_class=HTMLResponse)
+async def contact_send(name: str = Form(""), email: str = Form(""),
+                       topic: str = Form("general"), message: str = Form(""),
+                       website: str = Form("")):
+    if website:  # honeypot: only bots fill the hidden field
+        return render.contact("sent")
+    if not message.strip():
+        return render.contact("invalid")
+    status = await run_in_threadpool(relay.contact, name, email, topic, message)
+    return render.contact(status)
+
+
+@app.get("/donate", response_class=HTMLResponse)
+def donate():
+    return render.donate()
 
 
 @app.get("/pgp.txt", response_class=PlainTextResponse)
@@ -160,7 +188,8 @@ async def do_scan(file: UploadFile = File(...), fast: bool = Form(False)):
         raise
     hints = sorted({opt for f in report.findings
                     for key, opt in HINTS.items() if key in f.title})
-    return render.report(report, name, token, hints)
+    return HTMLResponse(render.report(report, name, token, hints),
+                        background=BackgroundTask(relay.bump, "checked"))
 
 
 @app.post("/clean", response_class=HTMLResponse)
@@ -204,8 +233,9 @@ async def do_clean(
     remaining = [f for f in after.sorted_findings()
                  if f.severity != "info" and f.category != "structure"]
     before_n = sum(1 for f in before.findings if f.severity != "info")
-    return render.cleaned(src.name, Path(out).name, before_n, len(remaining),
-                          remaining, notes, token)
+    return HTMLResponse(render.cleaned(src.name, Path(out).name, before_n, len(remaining),
+                                       remaining, notes, token),
+                        background=BackgroundTask(relay.bump, "scrubbed"))
 
 
 @app.get("/download/{token}")

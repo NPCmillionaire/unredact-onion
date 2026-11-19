@@ -58,9 +58,16 @@ li{margin:0 0 4px}
 footer{border-top:1px solid var(--line);margin-top:48px;padding-top:14px;color:var(--dim);font-size:12px}
 footer p{margin:0 0 4px}
 .note{border-left:3px solid var(--line);padding:8px 14px;margin:16px 0;color:var(--dim);font-size:13px}
+.ok{color:#4ade80;font-weight:700}
+.bad{color:var(--hot);font-weight:700}
+input[type=text],input[type=email],textarea{font:inherit;width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:6px 8px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.addr{word-break:break-all;user-select:all}
 """
 
-NAV = '<a href="/">scan</a> · <a href="/about">about</a>'
+NAV = ('<a href="/">scan</a> · <a href="/about">about</a> · '
+       '<a href="/contact">contact</a> · <a href="/donate">donate</a>')
+COUNT_MIN = 100  # the shared totals stay hidden until they mean something
 
 
 def page(title: str, body: str) -> str:
@@ -81,12 +88,22 @@ def page(title: str, body: str) -> str:
     )
 
 
-def home() -> str:
+def _totals(t: dict | None) -> str:
+    if not t or t.get("checked", 0) < COUNT_MIN:
+        return ""
+    out = f"<b>{t['checked']:,}</b> files checked"
+    if t.get("scrubbed", 0) >= COUNT_MIN:
+        out += f" · <b>{t['scrubbed']:,}</b> scrubbed"
+    return f'<p class="meta">{out}</p>'
+
+
+def home(max_mb: int = 50, totals: dict | None = None) -> str:
     body = """
 <h1>See what your files give away.</h1>
 <p class="lede">GPS coordinates, device serials, author names, black boxes that
-hide nothing, deleted text. Scan a photo, PDF or Office file, read the report,
-download a copy with the evidence removed.</p>
+hide nothing, deleted text. Scan a photo, PDF, Office file or video, read the
+report, download a copy with the evidence removed.</p>
+""" + _totals(totals) + """
 <form method="post" action="/scan" enctype="multipart/form-data">
   <fieldset><legend>file</legend>
     <input type="file" name="file" required>
@@ -97,11 +114,11 @@ download a copy with the evidence removed.</p>
   </fieldset>
   <button type="submit">Inspect file</button>
   <p class="meta">No JavaScript, no cookies. Works in w3m and lynx.
-  50 MB limit.</p>
+  MAX_MB MB limit.</p>
 </form>
 <p class="meta">What it checks and how it handles your file: <a href="/about">/about</a></p>
 """
-    return page("see what your files give away", body)
+    return page("see what your files give away", body.replace("MAX_MB", str(max_mb)))
 
 
 def _meter(score: int) -> str:
@@ -239,13 +256,16 @@ Tor onion service.</p>
 <li>embedded thumbnails and motion-photo video</li>
 <li>hidden PDF content: old revisions, attachments, annotations, deleted text</li>
 <li>Office internals: authors, comments, tracked changes, hidden sheets</li>
+<li>video and audio: location tags, device make and model, timed GPS and gyro tracks</li>
 <li>failed redactions: text still readable under black boxes</li>
 <li>optical: OCR text, QR/barcodes, faces, license plates, printer dots</li>
 </ul>
 
 <h2>how your file is handled</h2>
 <ul>
-<li>the scan runs here; nothing is sent to any third party</li>
+<li>the scan runs here; your file never leaves this machine</li>
+<li>the only thing sent on is a +1 to the shared count of files checked and
+cleaned on unredact.tools, with no details about the file</li>
 <li>uploads go to a private temp directory and are deleted when you download
 the cleaned copy, or after 5 minutes</li>
 <li>no filenames are logged, no cookies, no analytics, no scripts</li>
@@ -258,7 +278,8 @@ not a risk model.</p>
 
 <h2>limits</h2>
 <ul>
-<li>50 MB per file; OCR and dot decoding need a fast scan turned off</li>
+<li>200 MB per file, about a minute of phone video; OCR and dot decoding
+need a fast scan turned off</li>
 <li>detection is heuristic — a clean report is not a guarantee</li>
 <li>for anything you would not upload anywhere, run the CLI offline</li>
 </ul>
@@ -270,6 +291,77 @@ source: github.com/NPCmillionaire/unredact.tools</p>
 unredact.tools web</pre>
 """
     return page("about", body)
+
+
+TOPICS = (("general", "question or feedback"), ("leak", "a leak the scanner missed"),
+          ("security", "security issue"), ("bug", "bug"), ("other", "something else"))
+CONTACT_STATUS = {
+    "sent": ("ok", "Thanks, your message was sent."),
+    "invalid": ("bad", "Please write a message, and check the email address if you gave one."),
+    "busy": ("bad", "Too many messages through this mirror in the last hour. Try again later."),
+    "off": ("bad", "The contact form isn't available on this mirror right now. Use email."),
+    "send": ("bad", "Your message couldn't be sent. Try again, or use email."),
+}
+
+
+def contact(status: str | None = None) -> str:
+    note = ""
+    if status:
+        cls, text = CONTACT_STATUS.get(status, CONTACT_STATUS["send"])
+        note = f'<p class="{cls}" role="status">{e(text)}</p>'
+    options = "".join(f'<option value="{v}">{e(t)}</option>' for v, t in TOPICS)
+    body = f"""
+<h1>contact</h1>
+<p class="lede">Questions, feedback, a leak the scanner missed, or a security
+problem. Messages are passed to the clearnet site and emailed to me; nothing is
+stored here.</p>
+{note}
+<form method="post" action="/contact">
+  <label>name <span class="meta">optional</span>
+    <input type="text" name="name" maxlength="100"></label>
+  <label>email <span class="meta">optional, so I can reply</span>
+    <input type="email" name="email" maxlength="254"></label>
+  <label>topic <select name="topic">{options}</select></label>
+  <label>message
+    <textarea name="message" rows="7" maxlength="5000" required></textarea></label>
+  <label class="hp" aria-hidden="true">leave this empty
+    <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+  <button type="submit">Send message</button>
+  <p class="meta">Leave name and email blank to stay anonymous, but then I
+  can't write back. For anything sensitive, encrypt it to the
+  <a href="/pgp.txt">site PGP key</a> first.</p>
+</form>
+<p class="meta">email: cam@legitbiz.xyz</p>
+"""
+    return page("contact", body)
+
+
+WALLETS = (
+    ("monero (XMR)", "46yuwxTQphAMVk44rFkBkW15Qp6dPEdGD25LsFLyAiiHCnb9TXEovTzU7d9yCM9SA3Y4be53QXidF7gxtqNxH4vcCSGPsDj"),
+    ("bitcoin (BTC)", "bc1q8hdtgw3f8fan587ey3jqy073d0wv2k07vu98d9"),
+    ("ethereum (ETH) · ENS", "legitbiz.eth"),
+)
+
+
+def donate() -> str:
+    rows = "".join(f'<tr><th>{e(k)}</th><td class="addr">{e(v)}</td></tr>' for k, v in WALLETS)
+    body = f"""
+<h1>donate</h1>
+<p class="lede">unredact.tools is free, and I intend to keep it that way: no
+accounts, no paywall, no ads, no tracking. The goal is for it to become a
+standard safety and privacy tool on the internet. Donations pay for the servers
+and the time to keep adding new checks as new leaks turn up.</p>
+<p class="note">Every donation goes toward this tool: hosting, development and
+new privacy checks. Nothing else.</p>
+<h2>crypto</h2>
+<table>{rows}</table>
+<p class="meta">Monero is the most private option. Double-check an address
+after pasting it.</p>
+<h2>paypal</h2>
+<p class="meta">legitimatebizlabs@gmail.com, via paypal.com (clearnet, and not
+anonymous).</p>
+"""
+    return page("donate", body)
 
 
 def error(status: int, message: str) -> str:

@@ -114,3 +114,50 @@ def test_sweep(client):
     onion._sweep()
     assert not old.exists()
     assert new.exists()
+
+
+def test_new_pages(client):
+    for path in ("/contact", "/donate", "/about"):
+        r = client.get(path)
+        assert r.status_code == 200 and "<script" not in r.text
+        assert 'href="/donate"' in r.text
+    assert "bc1q8hdtgw3f8fan587ey3jqy073d0wv2k07vu98d9" in client.get("/donate").text
+
+
+def test_contact_relays(client, monkeypatch):
+    seen = []
+    monkeypatch.setattr(onion.relay, "contact", lambda *a: seen.append(a) or "sent")
+    r = client.post("/contact", data={"name": "A", "topic": "bug", "message": "hi"})
+    assert "message was sent" in r.text and seen[0][2:] == ("bug", "hi")
+    assert "write a message" in client.post("/contact", data={"message": " "}).text
+    assert "message was sent" in client.post("/contact", data={"message": "x", "website": "b"}).text
+    assert len(seen) == 1  # blank message and honeypot never reach the relay
+
+
+def test_totals_shown_only_when_large(client, monkeypatch):
+    monkeypatch.setattr(onion.relay, "totals", lambda: {"checked": 99, "scrubbed": 5})
+    assert "files checked" not in client.get("/").text
+    monkeypatch.setattr(onion.relay, "totals", lambda: {"checked": 1500, "scrubbed": 120})
+    assert "1,500</b> files checked · <b>120</b> scrubbed" in client.get("/").text
+
+
+def test_scan_and_clean_bump_totals(client, monkeypatch):
+    bumps = []
+    monkeypatch.setattr(onion.relay, "bump", bumps.append)
+    r = client.post("/scan", files={"file": ("vacation.jpg", SAMPLE.read_bytes(), "image/jpeg")})
+    client.post("/clean", data={"token": token(r.text)})
+    assert bumps == ["checked", "scrubbed"]
+
+
+def test_relay_contact_reads_redirect(monkeypatch):
+    class Resp:
+        def __init__(self, loc): self.headers = {"Location": loc}
+        def close(self): pass
+    monkeypatch.setattr(onion.relay, "TOKEN", "t")
+    monkeypatch.setattr(onion.relay, "_sent", [])
+    monkeypatch.setattr(onion.relay, "_post", lambda p, d=None: Resp("/contact?sent#form"))
+    assert onion.relay.contact("", "", "general", "hi") == "sent"
+    monkeypatch.setattr(onion.relay, "_post", lambda p, d=None: Resp("/contact?error=invalid#form"))
+    assert onion.relay.contact("", "", "general", "hi") == "invalid"
+    monkeypatch.setattr(onion.relay, "TOKEN", "")
+    assert onion.relay.contact("", "", "general", "hi") == "off"
